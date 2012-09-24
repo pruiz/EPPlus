@@ -586,7 +586,7 @@ namespace OfficeOpenXml
 			}
 		}
 		/// <summary>
-		/// Returns the formated value.
+		/// Returns the formatted value.
 		/// </summary>
 		public string Text
 		{
@@ -598,20 +598,33 @@ namespace OfficeOpenXml
 		/// <summary>
 		/// Set the column width from the content of the range. The minimum width is the value of the ExcelWorksheet.defaultColumnWidth property.
 		/// Note: Cells containing formulas are ignored since EPPlus don't have a calculation engine.
-		/// Wraped and merged cells are also ignored.
+		/// Wrapped and merged cells are also ignored.
 		/// </summary>
 		public void AutoFitColumns()
 		{
 			AutoFitColumns(_worksheet.DefaultColWidth);
 		}
+
 		/// <summary>
 		/// Set the column width from the content of the range.
 		/// Note: Cells containing formulas are ignored since EPPlus don't have a calculation engine.
-		/// Wraped and merged cells are also ignored.
+		///       Wrapped and merged cells are also ignored.
 		/// </summary>
         /// <remarks>This method will not work if you run in an environment that does not support GDI</remarks>
 		/// <param name="MinimumWidth">Minimum column width</param>
 		public void AutoFitColumns(double MinimumWidth)
+		{
+		    AutoFitColumns(MinimumWidth, double.MaxValue);
+		}
+
+	    /// <summary>
+	    /// Set the column width from the content of the range.
+	    /// Note: Cells containing formulas are ignored since EPPlus don't have a calculation engine.
+	    ///       Wrapped and merged cells are also ignored.
+	    /// </summary>
+	    /// <param name="MinimumWidth">Minimum column width</param>
+	    /// <param name="MaximumWidth">Maximum column width</param>
+	    public void AutoFitColumns(double MinimumWidth, double MaximumWidth)
 		{
 			if (_fromCol < 1 || _fromRow < 1)
 			{
@@ -729,7 +742,7 @@ namespace OfficeOpenXml
 
 						if (width > _worksheet.Column(cell._fromCol).Width)
 						{
-							_worksheet.Column(cell._fromCol).Width = width;
+							_worksheet.Column(cell._fromCol).Width = width > MaximumWidth ? MaximumWidth : width;
 						}
 					}
 				}
@@ -737,6 +750,7 @@ namespace OfficeOpenXml
 			_worksheet.Drawings.AdjustWidth(drawWidths);
 			_worksheet._package.DoAdjustDrawings = doAdjust;
 		}
+
 		internal string TextForWidth
 		{
 			get
@@ -1555,9 +1569,10 @@ namespace OfficeOpenXml
 		/// <param name="Table">The datatable to load</param>
 		/// <param name="PrintHeaders">Print the column caption property (if set) or the columnname property if not, on first row</param>
 		/// <param name="TableStyle">The table style to apply to the data</param>
-		public void LoadFromDataTable(DataTable Table, bool PrintHeaders, TableStyles TableStyle)
+		/// <returns>The filled range</returns>
+		public ExcelRangeBase LoadFromDataTable(DataTable Table, bool PrintHeaders, TableStyles TableStyle)
 		{
-			LoadFromDataTable(Table, PrintHeaders);
+			var r = LoadFromDataTable(Table, PrintHeaders);
 
 			int rows = Table.Rows.Count + (PrintHeaders ? 1 : 0) - 1;
             if (rows >= 0 && Table.Columns.Count>0)
@@ -1566,13 +1581,15 @@ namespace OfficeOpenXml
 				tbl.ShowHeader = PrintHeaders;
 				tbl.TableStyle = TableStyle;
 			}
+		    return r;
 		}
 		/// <summary>
 		/// Load the data from the datatable starting from the top left cell of the range
 		/// </summary>
 		/// <param name="Table">The datatable to load</param>
 		/// <param name="PrintHeaders">Print the caption property (if set) or the columnname property if not, on first row</param>
-		public void LoadFromDataTable(DataTable Table, bool PrintHeaders)
+		/// <returns>The filled range</returns>
+		public ExcelRangeBase LoadFromDataTable(DataTable Table, bool PrintHeaders)
 		{
 			if (Table == null)
 			{
@@ -1599,6 +1616,7 @@ namespace OfficeOpenXml
 				row++;
 				col = _fromCol;
 			}
+			return _worksheet.Cells[_fromRow, _fromCol, row - 1, Table.Columns.Count];
 		}
 		#endregion
 		#region LoadFromArrays
@@ -1609,7 +1627,7 @@ namespace OfficeOpenXml
 		/// <param name="Data">The data.</param>
 		public ExcelRangeBase LoadFromArrays(IEnumerable<object[]> Data)
 		{
-			//thanx to Abdullin for the code contibution
+			//thanx to Abdullin for the code contribution
 			if (Data == null) throw new ArgumentNullException("data");
 
 			int column = _fromCol, row = _fromRow;
@@ -1629,7 +1647,7 @@ namespace OfficeOpenXml
 		#endregion
 		#region LoadFromCollection
 		/// <summary>
-		/// Load a collection into a the worksheet startng from the top left row of the range.
+		/// Load a collection into a the worksheet starting from the top left row of the range.
 		/// </summary>
 		/// <typeparam name="T">The datatype in the collection</typeparam>
 		/// <param name="Collection">The collection to load</param>
@@ -1756,7 +1774,7 @@ namespace OfficeOpenXml
 		/// Default settings is Comma separation
 		/// </summary>
 		/// <param name="Text">The Text</param>
-		/// <returns>The range containg the data</returns>
+		/// <returns>The range containing the data</returns>
 		public ExcelRangeBase LoadFromText(string Text)
 		{
 			return LoadFromText(Text, new ExcelTextFormat());
@@ -1766,7 +1784,7 @@ namespace OfficeOpenXml
 		/// </summary>
 		/// <param name="Text">The Text</param>
 		/// <param name="Format">Information how to load the text</param>
-		/// <returns>The range containg the data</returns>
+		/// <returns>The range containing the data</returns>
 		public ExcelRangeBase LoadFromText(string Text, ExcelTextFormat Format)
 		{
 			if (Format == null) Format = new ExcelTextFormat();
@@ -1976,108 +1994,123 @@ namespace OfficeOpenXml
 		/// <param name="Destination">The start cell where the range will be copied.</param>
 		public void Copy(ExcelRangeBase Destination)
 		{
-			bool sameWorkbook = Destination._worksheet.Workbook == _worksheet.Workbook;
-			ExcelStyles sourceStyles = _worksheet.Workbook.Styles,
-									styles = Destination._worksheet.Workbook.Styles;
-			Dictionary<int, int> styleCashe = new Dictionary<int, int>();
+            bool sameWorkbook = Destination._worksheet.Workbook == _worksheet.Workbook;
+            ExcelStyles sourceStyles = _worksheet.Workbook.Styles,
+                                    styles = Destination._worksheet.Workbook.Styles;
+            Dictionary<int, int> styleCashe = new Dictionary<int, int>();
 
-			//Delete all existing cells;            
-			List<ExcelCell> newCells = new List<ExcelCell>();
-			Dictionary<ulong, ExcelCell> mergedCells = new Dictionary<ulong, ExcelCell>();
-			foreach (var cell in this)
-			{
-				//Clone the cell
-				var copiedCell = (_worksheet._cells[GetCellID(_worksheet.SheetID, cell._fromRow, cell._fromCol)] as ExcelCell);
+            //Delete all existing cells;            
+            List<ExcelCell> newCells = new List<ExcelCell>();
+            Dictionary<ulong, ExcelCell> mergedCells = new Dictionary<ulong, ExcelCell>();
+            foreach (var cell in this)
+            {
+                //Clone the cell
+                var copiedCell = (_worksheet._cells[GetCellID(_worksheet.SheetID, cell._fromRow, cell._fromCol)] as ExcelCell);
 
-				var newCell = copiedCell.Clone(Destination._worksheet,
-						Destination._fromRow + (copiedCell.Row - _fromRow),
-						Destination._fromCol + (copiedCell.Column - _fromCol));
+                var newCell = copiedCell.Clone(Destination._worksheet,
+                        Destination._fromRow + (copiedCell.Row - _fromRow),
+                        Destination._fromCol + (copiedCell.Column - _fromCol));
 
-				//If the formula is shared, remove the shared ID and set the formula for the cell.
-				if (newCell._sharedFormulaID >= 0)
-				{
-					newCell._sharedFormulaID = int.MinValue;
-					newCell.Formula = cell.Formula;
-				}
+                newCell.MergeId = _worksheet.GetMergeCellId(copiedCell.Row, copiedCell.Column);
 
-				if (!string.IsNullOrEmpty(newCell.Formula))
-				{
-					newCell.Formula = ExcelCell.UpdateFormulaReferences(newCell.Formula, newCell.Row - copiedCell.Row, (newCell.Column - copiedCell.Column), 1, 1);
-				}
+                //If the formula is shared, remove the shared ID and set the formula for the cell.
+                if (newCell._sharedFormulaID >= 0)
+                {
+                    newCell._sharedFormulaID = int.MinValue;
+                    newCell.Formula = cell.Formula;
+                }
 
-				//If its not the same workbook we must copy the styles to the new workbook.
-				if (!sameWorkbook)
-				{
-					if (styleCashe.ContainsKey(cell.StyleID))
-					{
-						newCell.StyleID = styleCashe[cell.StyleID];
-					}
-					else
-					{
-						newCell.StyleID = styles.CloneStyle(sourceStyles, cell.StyleID);
-						styleCashe.Add(cell.StyleID, newCell.StyleID);
-					}
-				}
-				newCells.Add(newCell);
-				if (newCell.Merge) mergedCells.Add(newCell.CellID, newCell);
-			}
+                if (!string.IsNullOrEmpty(newCell.Formula))
+                {
+                    newCell.Formula = ExcelCell.UpdateFormulaReferences(newCell.Formula, newCell.Row - copiedCell.Row, (newCell.Column - copiedCell.Column), 1, 1);
+                }
 
-			//Now clear the destination.
-			Destination.Offset(0, 0, (_toRow - _fromRow) + 1, (_toCol - _fromCol) + 1).Clear();
+                //If its not the same workbook we must copy the styles to the new workbook.
+                if (!sameWorkbook)
+                {
+                    if (styleCashe.ContainsKey(cell.StyleID))
+                    {
+                        newCell.StyleID = styleCashe[cell.StyleID];
+                    }
+                    else
+                    {
+                        newCell.StyleID = styles.CloneStyle(sourceStyles, cell.StyleID);
+                        styleCashe.Add(cell.StyleID, newCell.StyleID);
+                    }
+                }
+                newCells.Add(newCell);
+                if (newCell.Merge) mergedCells.Add(newCell.CellID, newCell);
+            }
 
-			//And last add the new cells to the worksheet
-			foreach (var cell in newCells)
-			{
-				Destination.Worksheet._cells.Add(cell);
-			}
-			//Add merged cells
-			if (mergedCells.Count > 0)
-			{
-				List<ExcelAddressBase> mergedAddresses = new List<ExcelAddressBase>();
-				foreach (var cell in mergedCells.Values)
-				{
-					if (!IsAdded(cell, mergedAddresses))
-					{
-						int startRow = cell.Row, startCol = cell.Column, endRow = cell.Row, endCol = cell.Column + 1;
-						while (mergedCells.ContainsKey(ExcelCell.GetCellID(Destination.Worksheet.SheetID, endRow, endCol)))
-						{
-							endCol++;
-						}
+            //Now clear the destination.
+            Destination.Offset(0, 0, (_toRow - _fromRow) + 1, (_toCol - _fromCol) + 1).Clear();
 
-						while (IsMerged(mergedCells, Destination.Worksheet, endRow, startCol, endCol - 1))
-						{
-							endRow++;
-						}
+            //And last add the new cells to the worksheet
+            foreach (var cell in newCells)
+            {
+                Destination.Worksheet._cells.Add(cell);
+            }
+            //Add merged cells
+            if (mergedCells.Count > 0)
+            {
+                List<ExcelAddressBase> mergedAddresses = new List<ExcelAddressBase>();
+                foreach (var cell in mergedCells.Values)
+                {
+                    if (!IsAdded(cell, mergedAddresses))
+                    {
+                        int startRow = cell.Row, startCol = cell.Column, endRow = cell.Row, endCol = cell.Column + 1;
+                        while (mergedCells.ContainsKey(ExcelCell.GetCellID(Destination.Worksheet.SheetID, endRow, endCol)))
+                        {
+                            ExcelCell next = mergedCells[ExcelCell.GetCellID(Destination.Worksheet.SheetID, endRow, endCol)];
+                            if (cell.MergeId != next.MergeId)
+                            {
+                                break;
+                            }
+                            endCol++;
+                        }
 
-						mergedAddresses.Add(new ExcelAddressBase(startRow, startCol, endRow - 1, endCol - 1));
-					}
-				}
-				Destination.Worksheet.MergedCells.List.AddRange((from r in mergedAddresses select r.Address));
-			}
+                        while (IsMerged(mergedCells, Destination.Worksheet, endRow, startCol, endCol - 1, cell))
+                        {
+                            endRow++;
+                        }
+
+                        mergedAddresses.Add(new ExcelAddressBase(startRow, startCol, endRow - 1, endCol - 1));
+                    }
+                }
+                Destination.Worksheet.MergedCells.List.AddRange((from r in mergedAddresses select r.Address));
+            }
 		}
 
 		private bool IsAdded(ExcelCell cell, List<ExcelAddressBase> mergedAddresses)
 		{
-			foreach (var address in mergedAddresses)
-			{
-				if (address.Collide(new ExcelAddressBase(cell.CellAddress)) == eAddressCollition.Inside)
-				{
-					return true;
-				}
-			}
-			return false;
+            foreach (var address in mergedAddresses)
+            {
+                if (address.Collide(new ExcelAddressBase(cell.CellAddress)) == eAddressCollition.Inside)
+                {
+                    return true;
+                }
+            }
+            return false;
 		}
 
-		private bool IsMerged(Dictionary<ulong, ExcelCell> mergedCells, ExcelWorksheet worksheet, int row, int startCol, int endCol)
+		private bool IsMerged(Dictionary<ulong, ExcelCell> mergedCells, ExcelWorksheet worksheet, int row, int startCol, int endCol, ExcelCell cell)
 		{
-			for (int col = startCol; col <= endCol; col++)
-			{
-				if (!mergedCells.ContainsKey(ExcelCell.GetCellID(worksheet.SheetID, row, col)))
-				{
-					return false;
-				}
-			}
-			return true;
+            for (int col = startCol; col <= endCol; col++)
+            {
+                if (!mergedCells.ContainsKey(ExcelCell.GetCellID(worksheet.SheetID, row, col)))
+                {
+                    return false;
+                }
+                else
+                {
+                    ExcelCell next = mergedCells[ExcelCell.GetCellID(worksheet.SheetID, row, col)];
+                    if (cell.MergeId != next.MergeId)
+                    {
+                        return false;
+                    }
+                }
+            }
+            return true;
 		}
 
 		/// <summary>
