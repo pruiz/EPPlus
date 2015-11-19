@@ -66,8 +66,10 @@ namespace OfficeOpenXml
 		{
 			if (row < 1 || col < 1)
                 throw new ArgumentException("Negative row and column numbers are not allowed");
-            if (row > ExcelPackage.MaxRows || col > ExcelPackage.MaxColumns)
-                throw new ArgumentException("Row or column numbers are out of range");
+            if (row > ExcelPackage.MaxRows)
+                throw new ArgumentException(string.Format("Too many rows, max {0} rows allowed", ExcelPackage.MaxRows));
+            if (col > ExcelPackage.MaxColumns)
+                throw new ArgumentException(string.Format("Too many columns, max {0} columns allowed", ExcelPackage.MaxColumns));                
             if (worksheet == null)
 				throw new ArgumentException("Worksheet must be set to a valid reference");
 
